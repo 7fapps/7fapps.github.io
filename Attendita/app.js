@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, update, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyArgI-tse9J1P9KtnGvkk1DucPpBVVs8gM",
@@ -117,9 +117,12 @@ function renderLogin() {
 
 function renderDashboard() {
   const u = state.user;
-  const mySessions = Object.values(state.sessions);
+  const mySessions = u.role === "courserep"
+    ? Object.values(state.sessions)
+    : Object.values(state.sessions).filter(s => s.creatorId === u.id);
   const roleColor = { lecturer:"amber", courserep:"green" }[u.role] || "blue";
   const roleLabel = { lecturer:"Lecturer", courserep:"Course Rep" }[u.role];
+
   return `
   <div>
     <div class="topbar">
@@ -132,7 +135,9 @@ function renderDashboard() {
     <div class="main">
       ${alertHtml()}
       <div class="row" style="justify-content:space-between;margin-bottom:1rem;">
-        <div style="font-size:18px;font-weight:700;">My Sessions</div>
+        <div style="font-size:18px;font-weight:700;">
+          ${u.role === "courserep" ? "All Sessions" : "My Sessions"}
+        </div>
         <button class="btn btn-primary btn-sm" id="createSessionBtn">+ New Session</button>
       </div>
       ${mySessions.length === 0
@@ -151,9 +156,11 @@ function renderDashboard() {
                   <button class="btn btn-sm ${s.active?'btn-danger':''}" data-toggle="${s.code}">
                     ${s.active?'Close':'Reopen'}
                   </button>
+                  <button class="btn btn-sm" style="background:#ef444420;color:#ef4444;border-color:#ef444440;" data-delete="${s.code}">🗑 Delete</button>
                 </div>
               </div>
               <div class="session-meta">
+                ${u.role === "courserep" ? `By ${s.creatorName} &bull; ` : ""}
                 Radius: ${s.radius}m &bull;
                 ${students.filter(st=>st.present).length}/${students.length} present &bull;
                 Status: <strong style="color:${s.active?'#34d399':'#fbbf24'}">${s.active?'Active':'Closed'}</strong>
@@ -392,6 +399,13 @@ function bindEvents() {
     const code = e.target.dataset.toggle;
     const s = state.sessions[code];
     if(s) update(ref(db, `sessions/${code}`), { active: !s.active });
+  }));
+
+  document.querySelectorAll("[data-delete]").forEach(btn => btn.addEventListener("click", e => {
+    const code = e.target.dataset.delete;
+    if(confirm("Are you sure you want to delete this session? This cannot be undone.")) {
+      remove(ref(db, `sessions/${code}`));
+    }
   }));
 
   document.querySelectorAll("[data-edit]").forEach(btn => btn.addEventListener("click", e => {
