@@ -1,34 +1,33 @@
-// ─── Persist to localStorage ──────────────────────────────────────────────────
-function saveState() {
-  localStorage.setItem("att_sessions", JSON.stringify(state.sessions));
-  if(state.user) localStorage.setItem("att_user", JSON.stringify(state.user));
-}
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, set, get, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-function loadState() {
-  try {
-    const sessions = localStorage.getItem("att_sessions");
-    const user = localStorage.getItem("att_user");
-    if(sessions) state.sessions = JSON.parse(sessions);
-    if(user) {
-      state.user = JSON.parse(user);
-      state.screen = state.user.role === "student" ? "student_home" : "dashboard";
-    }
-  } catch(e) { console.error(e); }
-}
-
-// ─── DB ───────────────────────────────────────────────────────────────────────
-const DB = {
-  users: [
-    { id:2, username:"lecturer1", password:"pass123", role:"lecturer", name:"Dr. Emeka Obi" },
-    { id:3, username:"courserep1", password:"pass123", role:"courserep", name:"Sara (Course Rep)" },
-    { id:4, username:"student1", password:"pass123", role:"student", name:"Chidi Nwosu" },
-    { id:5, username:"student2", password:"pass123", role:"student", name:"Amara Bello" },
-    { id:6, username:"student3", password:"pass123", role:"student", name:"Tunde Adeyemi" },
-    { id:7, username:"student4", password:"pass123", role:"student", name:"Ngozi Eze" },
-    { id:8, username:"student5", password:"pass123", role:"student", name:"Emeka Dike" },
-  ],
+// ─── Firebase Config ──────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyArgI-tse9J1P9KtnGvkk1DucPpBVVs8gM",
+  authDomain: "attendance-portal-e81f3.firebaseapp.com",
+  databaseURL: "https://attendance-portal-e81f3-default-rtdb.firebaseio.com",
+  projectId: "attendance-portal-e81f3",
+  storageBucket: "attendance-portal-e81f3.firebasestorage.app",
+  messagingSenderId: "169620903370",
+  appId: "1:169620903370:web:e8d860bc34d9c6602ceb33",
+  measurementId: "G-KGKHJKQHNQ"
 };
 
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getDatabase(firebaseApp);
+
+// ─── Users (hardcoded — can move to Firebase Auth later) ──────────────────────
+const USERS = [
+  { id:"lecturer1", username:"lecturer1", password:"pass123", role:"lecturer", name:"Dr. Emeka Obi" },
+  { id:"courserep1", username:"courserep1", password:"pass123", role:"courserep", name:"Sara (Course Rep)" },
+  { id:"student1", username:"student1", password:"pass123", role:"student", name:"Chidi Nwosu" },
+  { id:"student2", username:"student2", password:"pass123", role:"student", name:"Amara Bello" },
+  { id:"student3", username:"student3", password:"pass123", role:"student", name:"Tunde Adeyemi" },
+  { id:"student4", username:"student4", password:"pass123", role:"student", name:"Ngozi Eze" },
+  { id:"student5", username:"student5", password:"pass123", role:"student", name:"Emeka Dike" },
+];
+
+// ─── State ────────────────────────────────────────────────────────────────────
 let state = {
   user: null,
   screen: "login",
@@ -39,9 +38,29 @@ let state = {
   selectedStudent: null,
   locationStatus: null,
   editingSession: null,
-  joinCodeInput: "",
 };
 
+// ─── Load user from localStorage ──────────────────────────────────────────────
+function loadUser() {
+  try {
+    const u = localStorage.getItem("att_user");
+    if(u) {
+      state.user = JSON.parse(u);
+      state.screen = state.user.role === "student" ? "student_home" : "dashboard";
+    }
+  } catch(e) {}
+}
+
+// ─── Firebase: listen to all sessions in realtime ─────────────────────────────
+function listenToSessions() {
+  const sessionsRef = ref(db, "sessions");
+  onValue(sessionsRef, snapshot => {
+    state.sessions = snapshot.val() || {};
+    render();
+  });
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function genCode() {
   return Math.random().toString(36).substr(2,6).toUpperCase();
 }
@@ -54,6 +73,14 @@ function calcDist(lat1,lon1,lat2,lon2) {
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
+function $(id) { return document.getElementById(id); }
+
+function alertHtml() {
+  if(!state.alert) return "";
+  return `<div class="alert alert-${state.alert.type}">${state.alert.msg}</div>`;
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
 function render() {
   const app = document.getElementById("app");
   if(!app) return;
@@ -67,11 +94,6 @@ function render() {
   };
   app.innerHTML = `<div class="screen">${(screens[state.screen] || renderLogin)()}</div>`;
   bindEvents();
-}
-
-function alertHtml() {
-  if(!state.alert) return "";
-  return `<div class="alert alert-${state.alert.type}">${state.alert.msg}</div>`;
 }
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
@@ -143,17 +165,17 @@ function renderDashboard() {
           </div>
           <div class="session-meta">
             Radius: ${s.radius}m &bull;
-            ${s.students.filter(st=>st.present).length}/${s.students.length} present &bull;
+            ${Object.values(s.students||{}).filter(st=>st.present).length}/${Object.values(s.students||{}).length} present &bull;
             Status: <strong style="color:${s.active?'#34d399':'#fbbf24'}">${s.active?'Active':'Closed'}</strong>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">
-            ${s.students.map(st=>`
+            ${Object.values(s.students||{}).map(st=>`
               <span class="chip" style="background:${st.present?'#10b98120':'#f59e0b20'};color:${st.present?'#34d399':'#fbbf24'};">
                 ${st.name} ${st.present?'✓':'–'}
               </span>`).join("")}
           </div>
           <div class="session-link">
-            Share this code with students: <strong style="color:#e2e8f0;font-size:15px;letter-spacing:2px;">${s.code}</strong>
+            Share code with students: <strong style="color:#e2e8f0;font-size:15px;letter-spacing:2px;">${s.code}</strong>
           </div>
         </div>`).join("")}
     </div>
@@ -204,10 +226,11 @@ function renderCreateSession() {
   </div>`;
 }
 
-// ─── EDIT SESSION (Course Rep only) ──────────────────────────────────────────
+// ─── EDIT SESSION ─────────────────────────────────────────────────────────────
 function renderEditSession() {
   const s = state.editingSession;
   if(!s) return "";
+  const students = Object.values(s.students || {});
   return `
   <div>
     <div class="topbar">
@@ -222,7 +245,7 @@ function renderEditSession() {
           <span style="font-weight:400;color:#64748b;font-size:12px;">(tap to mark present/absent)</span>
         </div>
         <div class="scroll-area">
-          ${s.students.map((st,i) => `
+          ${students.map((st,i) => `
           <div class="student-row ${st.present?'present':''}" data-mark="${i}">
             <span style="font-size:14px;">${i+1}. ${st.name}</span>
             <span class="badge badge-${st.present?'green':'amber'}">${st.present?'Present':'Absent'}</span>
@@ -240,11 +263,10 @@ function renderEditSession() {
   </div>`;
 }
 
-// ─── STUDENT HOME (choose session) ───────────────────────────────────────────
+// ─── STUDENT HOME ─────────────────────────────────────────────────────────────
 function renderStudentHome() {
   const u = state.user;
   const activeSessions = Object.values(state.sessions).filter(s => s.active);
-
   return `
   <div>
     <div class="topbar">
@@ -256,22 +278,18 @@ function renderStudentHome() {
     </div>
     <div class="main">
       ${alertHtml()}
-
-      <!-- Join by code -->
       <div class="card col" style="gap:0.75rem;margin-bottom:1.25rem;">
         <div style="font-size:14px;font-weight:700;">Enter Session Code</div>
-        <div style="font-size:12px;color:#64748b;">Ask your lecturer or course rep for the session code.</div>
+        <div style="font-size:12px;color:#64748b;">Ask your lecturer or course rep for the 6-digit code.</div>
         <div class="row">
           <input id="join-code-input" type="text" placeholder="e.g. AB12CD" maxlength="6"
             style="flex:1;text-transform:uppercase;letter-spacing:3px;font-size:16px;font-weight:700;" />
           <button class="btn btn-primary btn-sm" id="joinByCodeBtn">Join</button>
         </div>
       </div>
-
-      <!-- Active sessions list -->
       <div style="font-size:14px;font-weight:700;margin-bottom:8px;">
         Active Sessions
-        <span style="font-weight:400;color:#64748b;font-size:12px;">(auto-detected)</span>
+        <span style="font-weight:400;color:#64748b;font-size:12px;">(live)</span>
       </div>
       ${activeSessions.length === 0
         ? `<div class="empty card">No active sessions right now.<br>Use the code above if your lecturer shared one.</div>`
@@ -280,7 +298,9 @@ function renderStudentHome() {
           <div class="row" style="justify-content:space-between;">
             <div>
               <div style="font-weight:700;">${s.title}</div>
-              <div class="session-meta" style="margin-top:4px;">By ${s.creatorName} &bull; Code: <strong style="color:#60a5fa;letter-spacing:2px;">${s.code}</strong></div>
+              <div class="session-meta" style="margin-top:4px;">
+                By ${s.creatorName} &bull; Code: <strong style="color:#60a5fa;letter-spacing:2px;">${s.code}</strong>
+              </div>
             </div>
             <span class="badge badge-green">Active</span>
           </div>
@@ -292,11 +312,11 @@ function renderStudentHome() {
 // ─── STUDENT CHECK-IN ─────────────────────────────────────────────────────────
 function renderStudentCheckin() {
   const s = state.sessions[state.checkinCode];
-  if(!s) return `<div style="padding:2rem;text-align:center;color:#64748b;">Session not found. Check the code and try again.</div>`;
+  if(!s) return `<div style="padding:2rem;text-align:center;color:#64748b;">Session not found.</div>`;
+  const students = Object.values(s.students || {});
   const sel = state.selectedStudent;
-  const alreadyPresent = sel !== null && s.students[sel]?.present;
+  const alreadyPresent = sel !== null && students[sel]?.present;
   const loc = state.locationStatus;
-
   return `
   <div>
     <div class="topbar">
@@ -308,28 +328,24 @@ function renderStudentCheckin() {
     </div>
     <div class="main">
       <div style="font-size:13px;color:#64748b;margin-bottom:1rem;">
-        Select your name from the list below, then scroll down and tap <strong style="color:#e2e8f0;">Mark Present</strong>.
+        Select your name, scroll down, then tap <strong style="color:#e2e8f0;">Mark Present</strong>.
       </div>
       ${alertHtml()}
       <div style="font-size:13px;font-weight:700;margin-bottom:8px;">
         Select your name
-        <span style="font-weight:400;color:#64748b;">(${s.students.length} students)</span>
+        <span style="font-weight:400;color:#64748b;">(${students.length} students)</span>
       </div>
       <div class="scroll-area" style="margin-bottom:1rem;">
-        ${s.students.map((st,i) => `
+        ${students.map((st,i) => `
         <div class="student-row ${st.present?'present':sel===i?'selected':''}" data-select="${i}">
           <span style="font-size:14px;">${i+1}. ${st.name}</span>
           <span class="badge badge-${st.present?'green':'amber'}">${st.present?'✓ Present':'Absent'}</span>
         </div>`).join("")}
       </div>
-
-      ${loc ? `<div class="alert alert-${loc.ok?'success':'danger'}" style="font-size:13px;">${loc.msg}</div>` : ""}
-
+      ${loc ? `<div class="alert alert-${loc.ok?'success':'danger'}">${loc.msg}</div>` : ""}
       <div style="background:#0e1420;border-radius:8px;padding:10px;font-size:12px;color:#64748b;margin-bottom:1rem;">
         📍 Required GPS radius: <strong style="color:#e2e8f0;">${s.radius}m</strong> from classroom.
-        Your device must allow location access.
       </div>
-
       <button class="btn btn-primary btn-full" id="markPresentBtn"
         ${sel === null || alreadyPresent ? "disabled" : ""}>
         ${sel === null ? "Select your name first" : alreadyPresent ? "✓ Already Marked Present" : "Mark Present"}
@@ -340,8 +356,6 @@ function renderStudentCheckin() {
 
 // ─── BIND EVENTS ──────────────────────────────────────────────────────────────
 function bindEvents() {
-  const $ = id => document.getElementById(id);
-
   $("loginBtn")?.addEventListener("click", doLogin);
   $("pw")?.addEventListener("keydown", e => e.key === "Enter" && doLogin());
 
@@ -357,8 +371,7 @@ function bindEvents() {
 
   $("backToHomeBtn")?.addEventListener("click", () => {
     state.screen = "student_home"; state.alert = null;
-    state.selectedStudent = null; state.locationStatus = null;
-    render();
+    state.selectedStudent = null; state.locationStatus = null; render();
   });
 
   $("createSessionBtn")?.addEventListener("click", () => {
@@ -381,16 +394,9 @@ function bindEvents() {
 
   $("joinByCodeBtn")?.addEventListener("click", joinByCode);
   $("join-code-input")?.addEventListener("keydown", e => e.key === "Enter" && joinByCode());
-  $("join-code-input")?.addEventListener("input", e => {
-    e.target.value = e.target.value.toUpperCase();
-  });
+  $("join-code-input")?.addEventListener("input", e => e.target.value = e.target.value.toUpperCase());
 
-  $("saveEditBtn")?.addEventListener("click", () => {
-    saveState();
-    state.alert = { type:"success", msg:"Attendance list saved." };
-    state.screen = "dashboard"; render();
-  });
-
+  $("saveEditBtn")?.addEventListener("click", saveEdit);
   $("addEditStudentBtn")?.addEventListener("click", addEditStudent);
   $("edit-student-input")?.addEventListener("keydown", e => e.key === "Enter" && addEditStudent());
 
@@ -399,37 +405,33 @@ function bindEvents() {
   }));
 
   document.querySelectorAll("[data-toggle]").forEach(btn => btn.addEventListener("click", e => {
-    const s = state.sessions[e.target.dataset.toggle];
-    if(s) { s.active = !s.active; saveState(); render(); }
+    const code = e.target.dataset.toggle;
+    const s = state.sessions[code];
+    if(s) update(ref(db, `sessions/${code}`), { active: !s.active });
   }));
 
   document.querySelectorAll("[data-edit]").forEach(btn => btn.addEventListener("click", e => {
-    state.editingSession = state.sessions[e.target.dataset.edit];
+    state.editingSession = JSON.parse(JSON.stringify(state.sessions[e.target.dataset.edit]));
     state.screen = "edit_session"; state.alert = null; render();
   }));
 
   document.querySelectorAll("[data-join]").forEach(card => card.addEventListener("click", e => {
-    const code = e.currentTarget.dataset.join;
-    state.checkinCode = code;
-    state.selectedStudent = null;
-    state.locationStatus = null;
-    state.alert = null;
-    state.screen = "student_checkin"; render();
+    state.checkinCode = e.currentTarget.dataset.join;
+    state.selectedStudent = null; state.locationStatus = null;
+    state.alert = null; state.screen = "student_checkin"; render();
   }));
 
   document.querySelectorAll("[data-select]").forEach(row => row.addEventListener("click", e => {
     const i = parseInt(e.currentTarget.dataset.select);
-    const s = state.sessions[state.checkinCode];
-    if(s?.students[i]?.present) return;
+    const students = Object.values(state.sessions[state.checkinCode]?.students || {});
+    if(students[i]?.present) return;
     state.selectedStudent = i; render();
   }));
 
   document.querySelectorAll("[data-mark]").forEach(row => row.addEventListener("click", e => {
     const i = parseInt(e.currentTarget.dataset.mark);
-    if(state.editingSession) {
-      state.editingSession.students[i].present = !state.editingSession.students[i].present;
-      saveState(); render();
-    }
+    const students = Object.values(state.editingSession?.students || {});
+    if(students[i]) { students[i].present = !students[i].present; state.editingSession.students = students; render(); }
   }));
 }
 
@@ -437,31 +439,23 @@ function bindEvents() {
 function doLogin() {
   const un = ($("un")?.value || "").trim();
   const pw = ($("pw")?.value || "").trim();
-  const user = DB.users.find(u => u.username === un && u.password === pw);
+  const user = USERS.find(u => u.username === un && u.password === pw);
   if(!user) { state.alert = { type:"danger", msg:"Invalid username or password." }; render(); return; }
   state.user = user;
   state.alert = null;
   localStorage.setItem("att_user", JSON.stringify(user));
-  if(user.role === "student") {
-    state.screen = "student_home";
-  } else {
-    state.screen = "dashboard";
-  }
+  state.screen = user.role === "student" ? "student_home" : "dashboard";
   render();
 }
-
-function $(id) { return document.getElementById(id); }
 
 function joinByCode() {
   const code = ($("join-code-input")?.value || "").trim().toUpperCase();
   if(!code) { state.alert = { type:"danger", msg:"Please enter a session code." }; render(); return; }
   const s = state.sessions[code];
-  if(!s) { state.alert = { type:"danger", msg:`No session found with code "${code}". Ask your lecturer to confirm.` }; render(); return; }
+  if(!s) { state.alert = { type:"danger", msg:`No session found with code "${code}".` }; render(); return; }
   if(!s.active) { state.alert = { type:"danger", msg:"This session is closed." }; render(); return; }
-  state.checkinCode = code;
-  state.selectedStudent = null;
-  state.locationStatus = null;
-  state.alert = null;
+  state.checkinCode = code; state.selectedStudent = null;
+  state.locationStatus = null; state.alert = null;
   state.screen = "student_checkin"; render();
 }
 
@@ -476,100 +470,104 @@ function addStudent() {
 function addEditStudent() {
   const inp = $("edit-student-input");
   if(inp?.value.trim()) {
+    if(!state.editingSession.students) state.editingSession.students = [];
     state.editingSession.students.push({ name: inp.value.trim(), present: false });
-    inp.value = ""; saveState(); render();
+    inp.value = ""; render();
   }
 }
 
 function saveSession() {
-  const title = ($("sess-title")?.value || state.newSession.title).trim();
+  const title = ($("sess-title")?.value || "").trim();
   if(!title) { state.alert = { type:"danger", msg:"Please enter a session title." }; render(); return; }
   if(state.newSession.students.length === 0) { state.alert = { type:"danger", msg:"Add at least one student." }; render(); return; }
   const code = genCode();
-  state.sessions[code] = {
+  const sessionData = {
     code, title,
     radius: state.newSession.radius,
     creatorId: state.user.id,
     creatorName: state.user.name,
     active: true,
-    students: state.newSession.students.map(name => ({ name, present: false })),
+    students: state.newSession.students.map((name,i) => ({ id:i, name, present: false })),
     lat: null,
     lon: null,
+    createdAt: Date.now(),
   };
-  // Capture lecturer's actual location as the classroom anchor
+
+  // Get lecturer location as classroom anchor
   if(navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(pos => {
-      state.sessions[code].lat = pos.coords.latitude;
-      state.sessions[code].lon = pos.coords.longitude;
-      saveState();
-    }, () => { saveState(); }, { enableHighAccuracy: true, timeout: 10000 });
-  } else { saveState(); }
+      sessionData.lat = pos.coords.latitude;
+      sessionData.lon = pos.coords.longitude;
+      set(ref(db, `sessions/${code}`), sessionData);
+    }, () => {
+      set(ref(db, `sessions/${code}`), sessionData);
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  } else {
+    set(ref(db, `sessions/${code}`), sessionData);
+  }
 
   state.alert = { type:"success", msg:`Session created! Share code: ${code}` };
-  state.screen = "dashboard";
-  saveState(); render();
+  state.screen = "dashboard"; render();
+}
+
+function saveEdit() {
+  const s = state.editingSession;
+  update(ref(db, `sessions/${s.code}`), { students: s.students }).then(() => {
+    state.alert = { type:"success", msg:"Attendance list saved." };
+    state.screen = "dashboard"; render();
+  });
 }
 
 function doMarkPresent() {
   const s = state.sessions[state.checkinCode];
+  const students = Object.values(s?.students || {});
   const i = state.selectedStudent;
   if(i === null || !s) return;
 
   if(!navigator.geolocation) {
-    confirmPresent(s, i, "GPS not supported on this device — marked present.");
+    confirmPresent(s, students, i, "GPS not supported — marked present.");
     return;
   }
-
   if(!s.lat || !s.lon) {
-    confirmPresent(s, i, "No classroom location set — marked present (demo mode).");
+    confirmPresent(s, students, i, "No classroom location set — marked present (demo).");
     return;
   }
 
-  state.locationStatus = { ok: null, msg: "📍 Getting your precise location, please wait..." };
+  state.locationStatus = { ok: null, msg: "📍 Getting your location, please wait..." };
   render();
 
   navigator.geolocation.getCurrentPosition(pos => {
-    const studentLat = pos.coords.latitude;
-    const studentLon = pos.coords.longitude;
-    const accuracy = pos.coords.accuracy;
-    const dist = calcDist(studentLat, studentLon, s.lat, s.lon);
-    const distRounded = Math.round(dist);
-
+    const dist = calcDist(pos.coords.latitude, pos.coords.longitude, s.lat, s.lon);
+    const accuracy = Math.round(pos.coords.accuracy);
     if(dist <= s.radius) {
-      confirmPresent(s, i,
-        `✅ Checked in! You are ${distRounded}m from the classroom (accuracy: ±${Math.round(accuracy)}m).`
-      );
+      confirmPresent(s, students, i, `✅ Checked in! You are ${Math.round(dist)}m away (±${accuracy}m accuracy).`);
     } else {
       state.locationStatus = {
         ok: false,
-        msg: `❌ You are ${distRounded}m away from the classroom. Must be within ${s.radius}m. (GPS accuracy: ±${Math.round(accuracy)}m)`
+        msg: `❌ You are ${Math.round(dist)}m away. Must be within ${s.radius}m. (GPS accuracy: ±${accuracy}m)`
       };
       render();
     }
-  },
-  err => {
+  }, err => {
     const msgs = {
-      1: "Location permission denied. Please allow location access in your browser settings.",
-      2: "Location unavailable. Try moving to an open area.",
-      3: "Location request timed out. Please try again.",
+      1: "Location permission denied. Please allow location in browser settings.",
+      2: "Location unavailable. Try moving to open area.",
+      3: "Location timed out. Please try again.",
     };
-    state.locationStatus = { ok: false, msg: msgs[err.code] || "Location error. Please try again." };
+    state.locationStatus = { ok: false, msg: msgs[err.code] || "Location error." };
     render();
-  },
-  {
-    enableHighAccuracy: true,
-    timeout: 15000,
-    maximumAge: 0
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+}
+
+function confirmPresent(s, students, i, msg) {
+  const studentKey = Object.keys(s.students)[i];
+  update(ref(db, `sessions/${s.code}/students/${studentKey}`), { present: true }).then(() => {
+    state.locationStatus = { ok: true, msg };
+    state.alert = { type:"success", msg };
+    render();
   });
 }
 
-function confirmPresent(s, i, msg) {
-  s.students[i].present = true;
-  state.locationStatus = { ok: true, msg };
-  state.alert = { type:"success", msg };
-  saveState(); render();
-}
-
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-loadState();
-render();
+loadUser();
+listenToSessions();
