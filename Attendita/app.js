@@ -117,7 +117,7 @@ function renderLogin() {
 
 function renderDashboard() {
   const u = state.user;
-  const mySessions = Object.values(state.sessions).filter(s => s.creatorId === u.id);
+  const mySessions = Object.values(state.sessions);
   const roleColor = { lecturer:"amber", courserep:"green" }[u.role] || "blue";
   const roleLabel = { lecturer:"Lecturer", courserep:"Course Rep" }[u.role];
   return `
