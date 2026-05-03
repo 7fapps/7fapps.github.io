@@ -16,7 +16,7 @@ const db = getDatabase(firebaseApp);
 
 const USERS = [
   { id:"lecturer1", username:"lecturer1", password:"pass123", role:"lecturer", name:"Dr. Emeka Obi" },
-  { id:"courserep1", username:"courserep1", password:"pass123", role:"courserep", name:"Sara (Course Rep)" },
+  { id:"courserep1", username:"courserep1", password:"pass123", role:"courserep", name:"Vikki (Course Rep)" },
   { id:"student1", username:"student1", password:"pass123", role:"student", name:"Chidi Nwosu" },
   { id:"student2", username:"student2", password:"pass123", role:"student", name:"Amara Bello" },
   { id:"student3", username:"student3", password:"pass123", role:"student", name:"Tunde Adeyemi" },
