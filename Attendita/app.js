@@ -1,22 +1,19 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, update, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// ─── Firebase Config ──────────────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyArgI-tse9J1P9KtnGvkk1DucPpBVVs8gM",
   authDomain: "attendance-portal-e81f3.firebaseapp.com",
-  databaseURL: "https://attendance-portal-e81f3-default-rtdb.firebaseio.com",
+  databaseURL: "https://attendance-portal-e81f3-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "attendance-portal-e81f3",
   storageBucket: "attendance-portal-e81f3.firebasestorage.app",
   messagingSenderId: "169620903370",
-  appId: "1:169620903370:web:e8d860bc34d9c6602ceb33",
-  measurementId: "G-KGKHJKQHNQ"
+  appId: "1:169620903370:web:e8d860bc34d9c6602ceb33"
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
 
-// ─── Users (hardcoded — can move to Firebase Auth later) ──────────────────────
 const USERS = [
   { id:"lecturer1", username:"lecturer1", password:"pass123", role:"lecturer", name:"Dr. Emeka Obi" },
   { id:"courserep1", username:"courserep1", password:"pass123", role:"courserep", name:"Sara (Course Rep)" },
@@ -27,7 +24,6 @@ const USERS = [
   { id:"student5", username:"student5", password:"pass123", role:"student", name:"Emeka Dike" },
 ];
 
-// ─── State ────────────────────────────────────────────────────────────────────
 let state = {
   user: null,
   screen: "login",
@@ -40,7 +36,8 @@ let state = {
   editingSession: null,
 };
 
-// ─── Load user from localStorage ──────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+
 function loadUser() {
   try {
     const u = localStorage.getItem("att_user");
@@ -51,16 +48,13 @@ function loadUser() {
   } catch(e) {}
 }
 
-// ─── Firebase: listen to all sessions in realtime ─────────────────────────────
 function listenToSessions() {
-  const sessionsRef = ref(db, "sessions");
-  onValue(sessionsRef, snapshot => {
+  onValue(ref(db, "sessions"), snapshot => {
     state.sessions = snapshot.val() || {};
     render();
   });
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function genCode() {
   return Math.random().toString(36).substr(2,6).toUpperCase();
 }
@@ -73,14 +67,11 @@ function calcDist(lat1,lon1,lat2,lon2) {
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-function $(id) { return document.getElementById(id); }
-
 function alertHtml() {
   if(!state.alert) return "";
   return `<div class="alert alert-${state.alert.type}">${state.alert.msg}</div>`;
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────────
 function render() {
   const app = document.getElementById("app");
   if(!app) return;
@@ -96,7 +87,6 @@ function render() {
   bindEvents();
 }
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
 function renderLogin() {
   return `
   <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;">
@@ -125,13 +115,11 @@ function renderLogin() {
   </div>`;
 }
 
-// ─── LECTURER / COURSE REP DASHBOARD ─────────────────────────────────────────
 function renderDashboard() {
   const u = state.user;
   const mySessions = Object.values(state.sessions).filter(s => s.creatorId === u.id);
   const roleColor = { lecturer:"amber", courserep:"green" }[u.role] || "blue";
   const roleLabel = { lecturer:"Lecturer", courserep:"Course Rep" }[u.role];
-
   return `
   <div>
     <div class="topbar">
@@ -149,40 +137,42 @@ function renderDashboard() {
       </div>
       ${mySessions.length === 0
         ? `<div class="empty card">No sessions yet. Create one to get started.</div>`
-        : mySessions.map(s => `
-        <div class="card session-card">
-          <div class="row" style="justify-content:space-between;margin-bottom:6px;">
-            <div>
-              <span style="font-weight:700;">${s.title}</span>
-              <span class="badge badge-blue" style="margin-left:6px;">${s.code}</span>
-            </div>
-            <div class="row" style="gap:6px;">
-              ${u.role === "courserep" ? `<button class="btn btn-sm" data-edit="${s.code}">Edit</button>` : ""}
-              <button class="btn btn-sm ${s.active?'btn-danger':''}" data-toggle="${s.code}">
-                ${s.active?'Close':'Reopen'}
-              </button>
-            </div>
-          </div>
-          <div class="session-meta">
-            Radius: ${s.radius}m &bull;
-            ${Object.values(s.students||{}).filter(st=>st.present).length}/${Object.values(s.students||{}).length} present &bull;
-            Status: <strong style="color:${s.active?'#34d399':'#fbbf24'}">${s.active?'Active':'Closed'}</strong>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">
-            ${Object.values(s.students||{}).map(st=>`
-              <span class="chip" style="background:${st.present?'#10b98120':'#f59e0b20'};color:${st.present?'#34d399':'#fbbf24'};">
-                ${st.name} ${st.present?'✓':'–'}
-              </span>`).join("")}
-          </div>
-          <div class="session-link">
-            Share code with students: <strong style="color:#e2e8f0;font-size:15px;letter-spacing:2px;">${s.code}</strong>
-          </div>
-        </div>`).join("")}
+        : mySessions.map(s => {
+            const students = Object.values(s.students || {});
+            return `
+            <div class="card session-card">
+              <div class="row" style="justify-content:space-between;margin-bottom:6px;">
+                <div>
+                  <span style="font-weight:700;">${s.title}</span>
+                  <span class="badge badge-blue" style="margin-left:6px;">${s.code}</span>
+                </div>
+                <div class="row" style="gap:6px;">
+                  ${u.role === "courserep" ? `<button class="btn btn-sm" data-edit="${s.code}">Edit</button>` : ""}
+                  <button class="btn btn-sm ${s.active?'btn-danger':''}" data-toggle="${s.code}">
+                    ${s.active?'Close':'Reopen'}
+                  </button>
+                </div>
+              </div>
+              <div class="session-meta">
+                Radius: ${s.radius}m &bull;
+                ${students.filter(st=>st.present).length}/${students.length} present &bull;
+                Status: <strong style="color:${s.active?'#34d399':'#fbbf24'}">${s.active?'Active':'Closed'}</strong>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">
+                ${students.map(st=>`
+                  <span class="chip" style="background:${st.present?'#10b98120':'#f59e0b20'};color:${st.present?'#34d399':'#fbbf24'};">
+                    ${st.name} ${st.present?'✓':'–'}
+                  </span>`).join("")}
+              </div>
+              <div class="session-link">
+                Share code with students: <strong style="color:#e2e8f0;font-size:15px;letter-spacing:2px;">${s.code}</strong>
+              </div>
+            </div>`;
+          }).join("")}
     </div>
   </div>`;
 }
 
-// ─── CREATE SESSION ───────────────────────────────────────────────────────────
 function renderCreateSession() {
   const ns = state.newSession;
   return `
@@ -226,7 +216,6 @@ function renderCreateSession() {
   </div>`;
 }
 
-// ─── EDIT SESSION ─────────────────────────────────────────────────────────────
 function renderEditSession() {
   const s = state.editingSession;
   if(!s) return "";
@@ -263,7 +252,6 @@ function renderEditSession() {
   </div>`;
 }
 
-// ─── STUDENT HOME ─────────────────────────────────────────────────────────────
 function renderStudentHome() {
   const u = state.user;
   const activeSessions = Object.values(state.sessions).filter(s => s.active);
@@ -309,7 +297,6 @@ function renderStudentHome() {
   </div>`;
 }
 
-// ─── STUDENT CHECK-IN ─────────────────────────────────────────────────────────
 function renderStudentCheckin() {
   const s = state.sessions[state.checkinCode];
   if(!s) return `<div style="padding:2rem;text-align:center;color:#64748b;">Session not found.</div>`;
@@ -354,7 +341,6 @@ function renderStudentCheckin() {
   </div>`;
 }
 
-// ─── BIND EVENTS ──────────────────────────────────────────────────────────────
 function bindEvents() {
   $("loginBtn")?.addEventListener("click", doLogin);
   $("pw")?.addEventListener("keydown", e => e.key === "Enter" && doLogin());
@@ -391,11 +377,9 @@ function bindEvents() {
   $("addStudentBtn")?.addEventListener("click", addStudent);
   $("saveSessionBtn")?.addEventListener("click", saveSession);
   $("markPresentBtn")?.addEventListener("click", doMarkPresent);
-
   $("joinByCodeBtn")?.addEventListener("click", joinByCode);
   $("join-code-input")?.addEventListener("keydown", e => e.key === "Enter" && joinByCode());
   $("join-code-input")?.addEventListener("input", e => e.target.value = e.target.value.toUpperCase());
-
   $("saveEditBtn")?.addEventListener("click", saveEdit);
   $("addEditStudentBtn")?.addEventListener("click", addEditStudent);
   $("edit-student-input")?.addEventListener("keydown", e => e.key === "Enter" && addEditStudent());
@@ -431,11 +415,14 @@ function bindEvents() {
   document.querySelectorAll("[data-mark]").forEach(row => row.addEventListener("click", e => {
     const i = parseInt(e.currentTarget.dataset.mark);
     const students = Object.values(state.editingSession?.students || {});
-    if(students[i]) { students[i].present = !students[i].present; state.editingSession.students = students; render(); }
+    if(students[i]) {
+      students[i].present = !students[i].present;
+      state.editingSession.students = students;
+      render();
+    }
   }));
 }
 
-// ─── ACTIONS ──────────────────────────────────────────────────────────────────
 function doLogin() {
   const un = ($("un")?.value || "").trim();
   const pw = ($("pw")?.value || "").trim();
@@ -470,7 +457,9 @@ function addStudent() {
 function addEditStudent() {
   const inp = $("edit-student-input");
   if(inp?.value.trim()) {
-    if(!state.editingSession.students) state.editingSession.students = [];
+    if(!Array.isArray(state.editingSession.students)) {
+      state.editingSession.students = Object.values(state.editingSession.students || {});
+    }
     state.editingSession.students.push({ name: inp.value.trim(), present: false });
     inp.value = ""; render();
   }
@@ -487,23 +476,22 @@ function saveSession() {
     creatorId: state.user.id,
     creatorName: state.user.name,
     active: true,
-    students: state.newSession.students.map((name,i) => ({ id:i, name, present: false })),
+    students: state.newSession.students.map((name, i) => ({ id:i, name, present: false })),
     lat: null,
     lon: null,
     createdAt: Date.now(),
   };
 
-  // Get lecturer location as classroom anchor
+  const doSave = () => set(ref(db, `sessions/${code}`), sessionData);
+
   if(navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(pos => {
       sessionData.lat = pos.coords.latitude;
       sessionData.lon = pos.coords.longitude;
-      set(ref(db, `sessions/${code}`), sessionData);
-    }, () => {
-      set(ref(db, `sessions/${code}`), sessionData);
-    }, { enableHighAccuracy: true, timeout: 10000 });
+      doSave();
+    }, () => doSave(), { enableHighAccuracy: true, timeout: 10000 });
   } else {
-    set(ref(db, `sessions/${code}`), sessionData);
+    doSave();
   }
 
   state.alert = { type:"success", msg:`Session created! Share code: ${code}` };
@@ -524,14 +512,8 @@ function doMarkPresent() {
   const i = state.selectedStudent;
   if(i === null || !s) return;
 
-  if(!navigator.geolocation) {
-    confirmPresent(s, students, i, "GPS not supported — marked present.");
-    return;
-  }
-  if(!s.lat || !s.lon) {
-    confirmPresent(s, students, i, "No classroom location set — marked present (demo).");
-    return;
-  }
+  if(!navigator.geolocation) { confirmPresent(s, students, i, "GPS not supported — marked present."); return; }
+  if(!s.lat || !s.lon) { confirmPresent(s, students, i, "No classroom location — marked present (demo)."); return; }
 
   state.locationStatus = { ok: null, msg: "📍 Getting your location, please wait..." };
   render();
@@ -549,11 +531,7 @@ function doMarkPresent() {
       render();
     }
   }, err => {
-    const msgs = {
-      1: "Location permission denied. Please allow location in browser settings.",
-      2: "Location unavailable. Try moving to open area.",
-      3: "Location timed out. Please try again.",
-    };
+    const msgs = { 1:"Location permission denied.", 2:"Location unavailable.", 3:"Location timed out." };
     state.locationStatus = { ok: false, msg: msgs[err.code] || "Location error." };
     render();
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
@@ -568,6 +546,5 @@ function confirmPresent(s, students, i, msg) {
   });
 }
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
 loadUser();
 listenToSessions();
