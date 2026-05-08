@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="manifest" href="manifest.json">
+
+<meta name="theme-color" content="#050609">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Attendita">
+<link rel="apple-touch-icon" href="logo.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendita Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+    
+        :root {
+            --bg-deep: #050609;
+            --bg-card: #0A0C12;
+            --bg-input: #11141D;
+            --text-main: #E2E8F0;
+            --text-dim: #94A3B8;
+            --accent-blue: #3B82F6;
+            --accent-blue-hover: #2563EB;
+            --accent-amber: #F59E0B;
+            --border: #1E293B;
+            --ff-tech: 'JetBrains Mono', monospace;
+            --ff-head: 'Syne', sans-serif;
+        }
+
+        body.light-mode {
+            --bg-deep: #F8FAFC;
+            --bg-card: #FFFFFF;
+            --bg-input: #F1F5F9;
+            --text-main: #0F172A;
+            --text-dim: #64748B;
+            --border: #E2E8F0;
+        }
+
+        body {
+            background: var(--bg-deep);
+            color: var(--text-main);
+            font-family: var(--ff-tech);
+            margin: 0; padding: 0;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        /* --- LOGO COLOR LOGIC --- */
+        body:not(.light-mode) img { filter: invert(1) brightness(2); }
+        body.light-mode img { filter: invert(0); }
+
+        #loader { display: none; flex-direction: column; align-items: center; gap: 1.5rem; }
+        .pulse { animation: pulse-animation 1.5s infinite ease-in-out; }
+        @keyframes pulse-animation {
+            0% { transform: scale(0.95); opacity: 0.6; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.6; }
+        }
+
+        .theme-toggle {
+            position: fixed; top: 20px; left: 20px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            color: var(--text-main); cursor: pointer; padding: 10px;
+            border-radius: 50%; font-size: 18px; z-index: 100;
+        }
+
+        #app { width: 100%; display: flex; justify-content: center; align-items: center; }
+        .portal-layout { width: 100%; max-width: 1000px; padding: 2rem; display: flex; flex-direction: column; gap: 2rem; }
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; }
+        .centered-card { width: 100%; max-width: 480px; display: flex; flex-direction: column; align-items: center; }
+
+        /* --- TYPOGRAPHY RESTORED --- */
+        h1, h2 { font-family: var(--ff-head); text-transform: uppercase; letter-spacing: -1px; margin: 0; }
+        h1 { font-size: 28px; font-weight: 800; }
+        h2 { font-size: 18px; font-weight: 700; }
+
+        input, textarea, .btn { font-family: var(--ff-tech); font-size: 14px; border-radius: 6px; outline: none; }
+        input, textarea { background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border); width: 100%; padding: 12px; transition: 0.2s;}
+        input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+
+        .btn { border: none; cursor: pointer; padding: 12px 20px; font-weight: 600; text-transform: uppercase; transition: 0.2s;}
+        .btn-full { width: 100%; }
+        .btn-primary { background: var(--accent-blue); color: #fff; }
+        .btn-primary:hover { background: var(--accent-blue-hover); }
+
+        .col { display: flex; flex-direction: column; }
+        .row { display: flex; flex-direction: row; align-items: center; }
+    </style>
+</head>
+<body class="dark-mode">
+    <button class="theme-toggle" id="themeBtn">🌓</button>
+    <div id="loader">
+        <img src="logo.png" class="pulse" style="width: 100px;">
+        <p style="font-size: 10px; letter-spacing: 3px; color: var(--text-dim);">SYSTEM INITIALIZING...</p>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
