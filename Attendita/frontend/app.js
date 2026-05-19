@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = { databaseURL: "https://attendance-portal-e81f3-default-rtdb.europe-west1.firebasedatabase.app" };
 const app = initializeApp(firebaseConfig);
@@ -8,224 +8,261 @@ const db = getDatabase(app);
 let state = {
     screen: 'login',
     user: null, 
-    sessions: {},
-    editingSession: null,
-    repMarkCount: 0 
+    universities: {},
+    // Tracking navigation path for Super Admin Dashboard
+    selectedUni: null,
+    selectedLevel: null,
+    selectedSemester: null
 };
 
 const $ = id => document.getElementById(id);
 
-// --- GEOLOCATION ---
-function getDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371e3;
-    const dLat = (lat2-lat1) * Math.PI/180;
-    const dLon = (lon2-lon1) * Math.PI/180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+// --- HARDCODED DEMO DATA BUILDER (If Firebase path is empty) ---
+function seedDatabaseIfEmpty() {
+    const sampleData = {
+        "MOUAU": {
+            name: "Michael Okpara University",
+            levels: {
+                "100": {
+                    semesters: {
+                        "First Semester": {
+                            courses: {
+                                "BIO_121": { title: "Introductory Biology I", lecturer: "Dr. Evans" },
+                                "CSC_111": { title: "Introduction to Computer Science", lecturer: "Prof. Okoro" }
+                            }
+                        },
+                        "Second Semester": { courses: { "CSC_122": { title: "Object Oriented Programming", lecturer: "Engr. Chibuzor" } } }
+                    }
+                },
+                "200": { semesters: { "First Semester": { courses: { "CSC_211": { title: "Data Structures", lecturer: "Dr. Asagba" } } } } }
+            }
+        },
+        "UNN": {
+            name: "University of Nigeria Nsukka",
+            levels: {
+                "100": { semesters: { "First Semester": { courses: { "MTH_111": { title: "General Mathematics I", lecturer: "Prof. Obi" } } } } }
+            }
+        }
+    };
+    set(ref(db, 'academic_structure'), sampleData);
 }
 
-// --- SCREENS ---
+// --- RENDERING VIEWS ---
 function renderLogin() {
     return `
-    <div class="centered-card card" style="border-top: 4px solid var(--accent-blue);">
-        <div class="logo-area" style="text-align:center; margin-bottom: 2.5rem;">
-            <img src="logo.png" alt="Attendita" style="width:120px; display:block; margin: 0 auto 1.5rem auto;">
-            <h1 style="line-height: 0.9;">ATTENDITA</h1>
-            <h2 style="color: var(--text-dim); font-size: 11px; letter-spacing: 2px; margin-top: 30px;">ATTENDANCE PORTAL</h2>
-            <p style="color: var(--accent-blue); font-size: 9px; letter-spacing: 2px; margin-top: 10px; font-weight: 700; opacity: 0.9;">7FAPPS IDENTITY MANAGEMENT</p>
-        </div>
-        <div class="col" style="gap:1.2rem; width:100%;">
-            <input id="email" type="text" placeholder="Username" autocomplete="off" />
-            <input id="password" type="password" placeholder="••••••••" />
-            <button class="btn btn-primary btn-full" id="loginBtn">AUTHORIZE ACCESS</button>
-        </div>
-    </div>`;
-}
-
-function renderDashboard() {
-    const sessions = Object.entries(state.sessions);
-    const { role, name } = state.user;
-    return `
-    <div class="portal-layout">
-        <div class="row" style="justify-content: space-between; width: 100%;">
-            <img src="logo.png" style="width: 45px;">
-            <div class="row" style="gap: 15px;">
-                <div class="col" style="align-items: flex-end;">
-                    <span style="font-size: 12px; font-weight: 800; color: var(--accent-amber);">${name.toUpperCase()}</span>
-                    <span style="font-size: 10px; opacity: 0.6; letter-spacing: 1px;">${role}</span>
-                </div>
-                <button class="btn" id="logoutBtn" style="border:1px solid #EF4444; color:#EF4444; background:none; font-size:10px; padding: 8px 12px;">LOG OUT</button>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div style="text-align:center; margin-bottom: 2rem;">
+                <img src="logo.png" style="width:100px; display:block; margin: 0 auto 1rem auto;">
+                <h1>ATTENDITA</h1>
+                <p style="color: var(--accent-blue); font-size: 9px; letter-spacing: 2px; font-weight: 700; margin: 5px 0 0 0;">7FAPPS IDENTITY MANAGEMENT</p>
             </div>
-        </div>
-        <div class="card">
-            <div class="row" style="justify-content: space-between; margin-bottom: 2rem;">
-                <h1>${role === 'SUPER_ADMIN' ? 'NEXUS GRID' : 'ACTIVE SESSIONS'}</h1>
-                ${['SUPER_ADMIN', 'LECTURER', 'COURSE_REP'].includes(role) ? `<button class="btn btn-primary" id="goCreateBtn">+ NEW SESSION</button>` : ''}
-            </div>
-            <div class="scroll-area">
-                ${sessions.length > 0 ? sessions.map(([id, s]) => `
-                    <div class="session-item card" data-id="${id}" style="margin-bottom: 1rem; padding: 1.2rem; background: var(--bg-input); display: flex; justify-content: space-between; align-items: center; cursor: pointer; border-left: 3px solid ${s.active ? 'var(--accent-blue)' : 'transparent'};">
-                        <div class="col">
-                            <span style="font-weight: 700; font-size: 16px;">${s.title}</span>
-                            <span style="font-size: 10px; color: var(--accent-blue); font-weight: 700;">ACCESS CODE: ${s.code}</span>
-                        </div>
-                        <div class="row" style="gap: 15px;">
-                            ${role === 'SUPER_ADMIN' ? `<button class="delete-btn btn" data-id="${id}" style="background:#EF4444; color:#fff; font-size:9px; padding: 6px 12px;">WIPE</button>` : ''}
-                            <div class="row" style="gap: 5px;">
-                                <div style="width: 8px; height: 8px; border-radius: 50%; background: ${s.active ? '#10B981' : '#EF4444'}; box-shadow: 0 0 8px ${s.active ? '#10B981' : '#EF4444'};"></div>
-                                <span style="font-size: 9px; font-weight: 700; opacity: 0.7;">${s.active ? 'LIVE' : 'CLOSED'}</span>
-                            </div>
-                        </div>
-                    </div>
-                `).join('') : '<p style="text-align:center; opacity:0.5;">No active sessions found.</p>'}
+            <div class="col" style="gap:1rem;">
+                <input id="email" type="text" placeholder="Username" autocomplete="off" />
+                <input id="password" type="password" placeholder="••••••••" />
+                <button class="btn btn-primary btn-full" id="loginBtn">AUTHORIZE ACCESS</button>
             </div>
         </div>
     </div>`;
 }
 
-function renderCreateSession() {
-    return `
-    <div class="portal-layout">
-        <div class="row" style="justify-content: space-between;">
-             <h2>NEW SESSION</h2>
-             <button class="btn" id="backBtn">BACK</button>
+function renderSuperAdminDashboard() {
+    const unis = Object.entries(state.universities);
+    
+    // 1. GENERATE THE SIDEBAR NAVIGATION TREE
+    let sidebarHtml = `
+    <div class="sidebar">
+        <div class="col" style="gap:5px;">
+            <img src="logo.png" style="width: 40px; margin-bottom: 10px;">
+            <h2>NEXUS GRID</h2>
+            <span style="font-size:10px; color:var(--accent-amber); font-weight:700;">SYSTEM ROOT OVERRIDE</span>
         </div>
-        <div class="card col" style="gap:1.5rem;">
-            <input id="sess-title" type="text" placeholder="COURSE TITLE (E.G. CSC 311)" />
-            <textarea id="sess-students" rows="8" placeholder="STUDENT NAMES (ONE PER LINE)"></textarea>
-            <button class="btn btn-primary btn-full" id="saveSessionBtn">LAUNCH PORTAL</button>
-        </div>
-    </div>`;
-}
-
-function renderEditSession() {
-    const s = state.sessions[state.editingSession];
-    const students = Object.values(s.students || {});
-    const role = state.user.role;
-    return `
-    <div class="portal-layout">
-        <div class="row" style="justify-content: space-between;">
-             <h2>${s.title}</h2>
-             <button class="btn" id="backBtn">EXIT</button>
-        </div>
-        <div class="card row" style="justify-content: space-between; margin-bottom: 1rem;">
-             <span style="font-weight:800;">CODE: <span style="color:var(--accent-blue);">${s.code}</span></span>
-             ${role === 'LECTURER' || role === 'SUPER_ADMIN' ? `<button class="btn" id="downloadBtn" style="border:1px solid var(--accent-blue); color:var(--accent-blue); background:none; font-size:10px;">CSV</button>` : ''}
-        </div>
-        <div class="card">
-            ${students.map(st => `
-                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border);">
-                    <span style="font-size: 13px;">${st.name}</span>
-                    <div class="row" style="gap:10px;">
-                        <span style="font-size: 10px; font-weight: 700; color: ${st.present ? '#10B981' : '#F59E0B'};">${st.present ? 'VERIFIED' : 'ABSENT'}</span>
-                    </div>
+        <hr style="width:100%; border:none; border-top:1px solid var(--border); margin:0;">
+        <div class="tree-section">
+            <span class="tree-title">Universities</span>
+            ${unis.map(([id, u]) => `
+                <div class="tree-item ${state.selectedUni === id ? 'active' : ''}" data-uni="${id}">
+                    🏛️ ${id}
                 </div>
             `).join('')}
         </div>
+        <button class="btn" id="logoutBtn" style="margin-top:auto; background:none; border:1px solid #EF4444; color:#EF4444; font-size:11px;">LOG OUT</button>
     </div>`;
+
+    // 2. GENERATE THE DRILL DOWN WORKSPACE PANELS
+    let workspaceHtml = `<div class="workspace">`;
+    
+    if (!state.selectedUni) {
+        workspaceHtml += `
+        <div class="card" style="text-align:center; padding: 4rem 2rem;">
+            <h2>Welcome to Central Control</h2>
+            <p style="color:var(--text-dim); max-width:400px; margin: 10px auto;">Select a university from the system navigation tree on the left to review operational metadata levels.</p>
+        </div>`;
+    } else {
+        const uniData = state.universities[state.selectedUni];
+        workspaceHtml += `
+        <div class="card" style="margin-bottom:1.5rem;">
+            <span style="font-size:11px; color:var(--accent-blue); font-weight:700; text-transform:uppercase;">Active Domain</span>
+            <h1 style="margin-top:5px;">${uniData.name}</h1>
+        </div>`;
+
+        // LEVEL CONTROLLER VIEW
+        if (!state.selectedLevel) {
+            const levels = Object.keys(uniData.levels || {});
+            workspaceHtml += `
+            <h3>Select Level Workspace</h3>
+            <div class="data-grid">
+                ${levels.map(lvl => `
+                    <div class="grid-box level-box" data-lvl="${lvl}">
+                        <span style="font-size:24px; font-weight:800; color:var(--accent-blue);">${lvl}L</span>
+                        <span style="font-size:11px; color:var(--text-dim);">Academic Structure Tracks</span>
+                    </div>
+                `).join('')}
+            </div>`;
+        } 
+        // SEMESTER CONTROLLER VIEW
+        else if (state.selectedLevel && !state.selectedSemester) {
+            const semesters = Object.keys(uniData.levels[state.selectedLevel].semesters || {});
+            workspaceHtml += `
+            <div class="row" style="gap:10px; margin-bottom:1.5rem;">
+                <button class="btn" id="clearLevelBtn" style="padding:6px 12px; font-size:11px; background:var(--bg-input); color:var(--text-main);">< BACK</button>
+                <h3>Path: Level ${state.selectedLevel}</h3>
+            </div>
+            <div class="data-grid">
+                ${semesters.map(sem => `
+                    <div class="grid-box semester-box" data-sem="${sem}">
+                        <span style="font-size:16px; font-weight:700;">${sem}</span>
+                        <span style="font-size:11px; color:var(--accent-amber); font-weight:700;">Open Catalog</span>
+                    </div>
+                `).join('')}
+            </div>`;
+        }
+        // COURSE & LECTURER CATELOGUE DATA GRID VIEW
+        else {
+            const courses = Object.entries(uniData.levels[state.selectedLevel].semesters[state.selectedSemester].courses || {});
+            workspaceHtml += `
+            <div class="row" style="gap:10px; margin-bottom:1.5rem;">
+                <button class="btn" id="clearSemesterBtn" style="padding:6px 12px; font-size:11px; background:var(--bg-input); color:var(--text-main);">< BACK</button>
+                <h3>Path: Level ${state.selectedLevel} > ${state.selectedSemester}</h3>
+            </div>
+            <div class="card">
+                <h2 style="margin-bottom:1.5rem; font-size:20px; color:var(--accent-blue);">Course Allocations</h2>
+                ${courses.length > 0 ? courses.map(([code, data]) => `
+                    <div style="display:flex; justify-content:space-between; padding:16px 0; border-bottom:1px solid var(--border); align-items:center;">
+                        <div class="col">
+                            <span style="font-weight:700; font-size:15px; color:var(--text-main);">${code}: ${data.title}</span>
+                        </div>
+                        <div class="col" style="align-items:flex-end;">
+                            <span style="font-size:12px; font-weight:700; color:var(--text-main);">👨‍🏫 ${data.lecturer}</span>
+                            <span style="font-size:10px; color:var(--text-dim);">Course Instructor Allocation</span>
+                        </div>
+                    </div>
+                `).join('') : '<p style="color:var(--text-dim); text-align:center;">No course profiles initialized for this semester track.</p>'}
+            </div>`;
+        }
+    }
+
+    workspaceHtml += `</div>`; // Close workspace layout div
+
+    return `<div class="admin-container">${sidebarHtml}${workspaceHtml}</div>`;
 }
 
-// --- LOGIC ---
+// --- LOGIC AND RUNTIME ROUTERS ---
 function bindEvents() {
     const tBtn = $('themeBtn');
-    if(tBtn) tBtn.onclick = () => document.body.classList.toggle('light-mode');
+    if(tBtn) tBtn.onclick = () => document.body.classList.toggle('dark-mode');
 
-    $('loginBtn')?.addEventListener('click', () => {
-        const u = $('email').value.trim().toLowerCase();
-        const p = $('password').value;
-        
-        $('app').style.display = 'none';
-        $('loader').style.display = 'flex';
+    const loginBtn = $('loginBtn');
+    if (loginBtn) {
+        loginBtn.onclick = () => {
+            const u = $('email').value.trim().toLowerCase();
+            const p = $('password').value;
+            
+            $('app').style.display = 'none';
+            $('loader').style.display = 'flex';
 
-        setTimeout(() => {
-            navigator.geolocation.getCurrentPosition(pos => {
-                let foundUser = null;
+            setTimeout(() => {
                 if (u === 'damian' && p === 'nexus123') {
-                    foundUser = { role: 'SUPER_ADMIN', name: 'Damian', lat: pos.coords.latitude, lng: pos.coords.longitude };
-                } else if (u.includes('lecturer')) {
-                    foundUser = { role: 'LECTURER', name: 'Lecturer', lat: pos.coords.latitude, lng: pos.coords.longitude };
-                } else if (u.includes('rep')) {
-                    foundUser = { role: 'COURSE_REP', name: 'Rep', lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    state.user = { role: 'SUPER_ADMIN', name: 'Damian' };
+                    fetchAcademicStructure();
                 } else {
-                    foundUser = { role: 'STUDENT', name: u || 'Student', lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    alert("ACCESS DENIED: Credentials rejected outside global system node.");
+                    $('loader').style.display = 'none';
+                    $('app').style.display = 'flex';
                 }
+            }, 1500);
+        };
+    }
 
-                if(foundUser) {
-                    state.user = foundUser;
-                    fetchSessions(); // This will trigger the first real render once data arrives
-                }
-            }, err => {
-                alert("GPS AUTHENTICATION FAILED.");
-                $('loader').style.display = 'none';
-                $('app').style.display = 'flex';
-            });
-        }, 3000);
-    });
+    const passwordField = $('password');
+    if (passwordField && loginBtn) {
+        passwordField.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter' || e.keyCode === 13) loginBtn.click();
+        });
+    }
 
-    $('logoutBtn')?.addEventListener('click', () => { 
-        state.user = null;
-        state.screen = 'login'; 
-        render(); 
-    });
-    
-    $('goCreateBtn')?.addEventListener('click', () => { state.screen = 'create_session'; render(); });
-    $('backBtn')?.addEventListener('click', () => { state.screen = 'dashboard'; render(); });
-
-    $('saveSessionBtn')?.addEventListener('click', () => {
-        const title = $('sess-title').value;
-        const lines = $('sess-students').value.split('\n').filter(n => n.trim() !== "");
-        const code = Math.random().toString(36).substring(2, 7).toUpperCase();
-        const studs = {};
-        lines.forEach(n => { studs[n.replace(/\s/g, '_').toLowerCase()] = { name: n, present: false }; });
-        set(ref(db, `sessions/${code}`), { title, code, active: true, students: studs, lat: state.user.lat, lng: state.user.lng })
-        .then(() => { state.screen = 'dashboard'; render(); });
-    });
-
-    document.querySelectorAll('.session-item').forEach(el => {
-        el.addEventListener('click', () => {
-            state.editingSession = el.dataset.id;
-            state.screen = 'edit_session';
+    // Navigation Tree Interceptors
+    document.querySelectorAll('[data-uni]').forEach(el => {
+        el.onclick = () => {
+            state.selectedUni = el.dataset.uni;
+            state.selectedLevel = null;
+            state.selectedSemester = null;
             render();
-        });
+        };
     });
 
-    document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if(confirm("WIPE DATA?")) remove(ref(db, `sessions/${e.target.dataset.id}`));
-        });
+    document.querySelectorAll('.level-box').forEach(el => {
+        el.onclick = () => {
+            state.selectedLevel = el.dataset.lvl;
+            state.selectedSemester = null;
+            render();
+        };
     });
+
+    document.querySelectorAll('.semester-box').forEach(el => {
+        el.onclick = () => {
+            state.selectedSemester = el.dataset.sem;
+            render();
+        };
+    });
+
+    $('clearLevelBtn').onclick = () => { state.selectedLevel = null; render(); };
+    $('clearSemesterBtn').onclick = () => { state.selectedSemester = null; render(); };
+
+    $('logoutBtn').onclick = () => {
+        state.user = null;
+        state.screen = 'login';
+        state.selectedUni = null;
+        state.selectedLevel = null;
+        state.selectedSemester = null;
+        render();
+    };
 }
 
-function fetchSessions() {
-    onValue(ref(db, 'sessions'), (snap) => {
-        state.sessions = snap.val() || {};
-        state.screen = 'dashboard';
-        $('loader').style.display = 'none';
-        $('app').style.display = 'flex';
-        render();
-    }, { onlyOnce: false });
+function fetchAcademicStructure() {
+    onValue(ref(db, 'academic_structure'), (snap) => {
+        const val = snap.val();
+        if(!val) {
+            seedDatabaseIfEmpty(); // Inject placeholder profiles if database node is dead
+        } else {
+            state.universities = val;
+            state.screen = 'super_dashboard';
+            $('loader').style.display = 'none';
+            $('app').style.display = 'flex';
+            render();
+        }
+    });
 }
 
 function render() {
     const root = $('app');
-    // Security check: if no user and not on login screen, force login
     if (!state.user) {
         root.innerHTML = renderLogin();
     } else {
-        if (state.screen === 'login') root.innerHTML = renderDashboard(); // auto-redirect if logged in
-        else if (state.screen === 'dashboard') root.innerHTML = renderDashboard();
-        else if (state.screen === 'create_session') root.innerHTML = renderCreateSession();
-        else if (state.screen === 'edit_session') root.innerHTML = renderEditSession();
+        if (state.screen === 'super_dashboard') root.innerHTML = renderSuperAdminDashboard();
     }
     bindEvents();
 }
-// --- PWA INSTALLATION ---
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('Nexus Service Worker Active', reg.scope))
-            .catch(err => console.log('Service Worker Failed', err));
-    });
-}
+
+document.body.classList.remove('dark-mode');
 render();
